@@ -22,18 +22,25 @@ def determine_script(month):
     else:
         return "stock-market-robot.py"
 
-# Step 1: Check for Anaconda3 installation
+# Paths
 anaconda_path = Path.home() / "anaconda3"
 conda_sh_path = anaconda_path / "etc" / "profile.d" / "conda.sh"
+project_dir = Path.home() / "Trading-Robot-for-the-Current-Month-Selector"
 
+# Step 1: Check for Anaconda3 and project folder
 if not anaconda_path.exists() or not conda_sh_path.exists():
     print("\n⚠️  Anaconda3 not found at ~/anaconda3.")
     print("Please download and install Anaconda from:\n👉 https://www.anaconda.com/download\n")
     sys.exit(1)
 
-# Step 2: Change working directory to ~/anaconda3
-os.chdir(anaconda_path)
-print(f"Working directory changed to: {anaconda_path}")
+if not project_dir.exists():
+    print("\n⚠️  Project folder not found at ~/Trading-Robot-for-the-Current-Month-Selector.")
+    print("Please make sure the folder exists and contains your scripts.")
+    sys.exit(1)
+
+# Step 2: Change working directory to the project folder
+os.chdir(project_dir)
+print(f"Working directory changed to: {project_dir}")
 
 # Step 3: Initial setup
 os.system("rm -f trading_bot.db")
@@ -43,19 +50,19 @@ current_script = determine_script(current_month)
 # Launch the main script in the current terminal with conda activated
 current_process = subprocess.Popen([
     "bash", "-c",
-    f"source {conda_sh_path} && conda activate base && python3 {current_script}"
+    f"source {conda_sh_path} && conda activate base && cd {project_dir} && python3 {current_script}"
 ])
 print(f"Started {current_script} (Month: {current_month})")
 
 # Step 4: Start the two continuous scripts in new terminal windows
 stock_list_process = subprocess.Popen([
     "x-terminal-emulator", "-e",
-    f"bash -c 'source {conda_sh_path} && conda activate base && cd {anaconda_path} && python3 stock-list-writer-for-list-of-stock-symbols-to-scan.py; exec bash'"
+    f"bash -c 'source {conda_sh_path} && conda activate base && cd {project_dir} && python3 stock-list-writer-for-list-of-stock-symbols-to-scan.py; exec bash'"
 ])
 
 performance_process = subprocess.Popen([
     "x-terminal-emulator", "-e",
-    f"bash -c 'source {conda_sh_path} && conda activate base && cd {anaconda_path} && python3 performance-stock-list-writer.py; exec bash'"
+    f"bash -c 'source {conda_sh_path} && conda activate base && cd {project_dir} && python3 performance-stock-list-writer.py; exec bash'"
 ])
 
 print("Started stock-list-writer-for-list-of-stock-symbols-to-scan.py in new terminal")
@@ -78,7 +85,7 @@ while True:
         os.system("rm -f trading_bot.db")
         current_process = subprocess.Popen([
             "bash", "-c",
-            f"source {conda_sh_path} && conda activate base && python3 {new_script}"
+            f"source {conda_sh_path} && conda activate base && cd {project_dir} && python3 {new_script}"
         ])
         current_script = new_script
         print(f"Switched to {new_script} (Month: {new_month})")
