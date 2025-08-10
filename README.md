@@ -3,6 +3,14 @@ This is a combination of the Billionaire Trading Robot and the Bull Market Robot
 
 Run the following command in a command line window terminal:  
 
+cd ~/Trading-Robot-for-the-Current-Month-Selector
+
+On the first run, install python dependencies: 
+
+sh install.sh
+
+( run the followong python 3 script )
+
 python3 start-main-program.py
 
 ( Recommended Operating System: 
