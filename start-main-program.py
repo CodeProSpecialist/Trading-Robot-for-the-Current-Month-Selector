@@ -1,21 +1,55 @@
 import os
+import time
+import subprocess
 from datetime import datetime
 
-def get_current_month():
-    """Returns the current month as a number (1-12)."""
-    return datetime.now().month
+def get_next_month_first():
+    """Calculate the datetime for the first day of the next month at 00:00:00."""
+    now = datetime.now()
+    year = now.year
+    month = now.month + 1
+    if month > 12:
+        month = 1
+        year += 1
+    return datetime(year, month, 1, 0, 0, 0)
 
-def run_trading_robot():
-    """Determines which trading robot script to run based on the current month."""
-    current_month = get_current_month()
-    
-    # Months that are NOT May(5), June(6), July(7), or November(11)
-    if current_month not in [5, 6, 7, 11]:
-        os.system("python3 billionaire-strategy-buy-lowest-price-stock-market-robot.py")
-        print(f"Running billionaire-strategy-buy-lowest-price-stock-market-robot.py (Month: {current_month})")
+def determine_script(month):
+    """Determine which script to run based on the month."""
+    if month not in [5, 6, 7, 11]:
+        return "billionaire-strategy-buy-lowest-price-stock-market-robot.py"
     else:
-        os.system("python3 stock-market-robot.py")
-        print(f"Running stock-market-robot.py (Month: {current_month})")
+        return "stock-market-robot.py"
 
-# Run the trading robot once and exit
-run_trading_robot()
+# Initial setup: delete db and start the appropriate robot
+os.system("rm trading_bot.db")
+current_month = datetime.now().month
+current_script = determine_script(current_month)
+current_process = subprocess.Popen(["python3", current_script])
+print(f"Started {current_script} (Month: {current_month})")
+
+# Main loop to check on the first of each next month
+while True:
+    next_first = get_next_month_first()
+    sleep_seconds = (next_first - datetime.now()).total_seconds()
+    if sleep_seconds > 0:
+        time.sleep(sleep_seconds)
+    
+    # Now it's approximately the 1st of the next month
+    now = datetime.now()
+    new_month = now.month
+    new_script = determine_script(new_month)
+    
+    if new_script != current_script:
+        # Kill the previous process
+        current_process.terminate()
+        current_process.wait()
+        
+        # Delete the database
+        os.system("rm trading_bot.db")
+        
+        # Start the new script
+        current_process = subprocess.Popen(["python3", new_script])
+        current_script = new_script
+        print(f"Switched to {new_script} (Month: {new_month})")
+    else:
+        print(f"No switch needed, continuing with {current_script} (Month: {new_month})")
