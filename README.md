@@ -9,7 +9,7 @@ On the first run, install python dependencies:
 
 sh install.sh
 
-( run the followong python 3 script )
+( run the following python 3 script )
 
 python3 start-main-program.py
 
