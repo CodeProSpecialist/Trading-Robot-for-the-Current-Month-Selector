@@ -5,7 +5,7 @@ Run the following commands in 3 separate command line window terminals.
 
 python3 stock-list-writer-for-list-of-stock-symbols-to-scan.py
 
-python3 python3 performance-stock-list-writer.py
+python3 performance-stock-list-writer.py
 
 python3 start-main-program.py
 
