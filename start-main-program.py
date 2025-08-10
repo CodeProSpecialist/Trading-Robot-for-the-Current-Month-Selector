@@ -2,6 +2,8 @@ import os
 import time
 import subprocess
 from datetime import datetime
+from pathlib import Path
+import sys
 
 def get_next_month_first():
     """Calculate the datetime for the first day of the next month at 00:00:00."""
@@ -20,47 +22,64 @@ def determine_script(month):
     else:
         return "stock-market-robot.py"
 
-# Initial setup: delete db and start the appropriate robot
-os.system("rm trading_bot.db")
+# Step 1: Check for Anaconda3 installation
+anaconda_path = Path.home() / "anaconda3"
+conda_sh_path = anaconda_path / "etc" / "profile.d" / "conda.sh"
+
+if not anaconda_path.exists() or not conda_sh_path.exists():
+    print("\n⚠️  Anaconda3 not found at ~/anaconda3.")
+    print("Please download and install Anaconda from:\n👉 https://www.anaconda.com/download\n")
+    sys.exit(1)
+
+# Step 2: Change working directory to ~/anaconda3
+os.chdir(anaconda_path)
+print(f"Working directory changed to: {anaconda_path}")
+
+# Step 3: Initial setup
+os.system("rm -f trading_bot.db")
 current_month = datetime.now().month
 current_script = determine_script(current_month)
-current_process = subprocess.Popen(["python3", current_script])
+
+# Launch the main script in the current terminal with conda activated
+current_process = subprocess.Popen([
+    "bash", "-c",
+    f"source {conda_sh_path} && conda activate base && python3 {current_script}"
+])
 print(f"Started {current_script} (Month: {current_month})")
 
-# Start the two continuous scripts in separate x-terminal-emulator windows
+# Step 4: Start the two continuous scripts in new terminal windows
 stock_list_process = subprocess.Popen([
-    "x-terminal-emulator", "-e", "bash -c 'python3 stock-list-writer-for-list-of-stock-symbols-to-scan.py; exec bash'"
+    "x-terminal-emulator", "-e",
+    f"bash -c 'source {conda_sh_path} && conda activate base && cd {anaconda_path} && python3 stock-list-writer-for-list-of-stock-symbols-to-scan.py; exec bash'"
 ])
 
 performance_process = subprocess.Popen([
-    "x-terminal-emulator", "-e", "bash -c 'python3 performance-stock-list-writer.py; exec bash'"
+    "x-terminal-emulator", "-e",
+    f"bash -c 'source {conda_sh_path} && conda activate base && cd {anaconda_path} && python3 performance-stock-list-writer.py; exec bash'"
 ])
 
 print("Started stock-list-writer-for-list-of-stock-symbols-to-scan.py in new terminal")
 print("Started performance-stock-list-writer.py in new terminal")
 
-# Main loop to check on the first of each next month
+# Step 5: Monthly check loop
 while True:
     next_first = get_next_month_first()
     sleep_seconds = (next_first - datetime.now()).total_seconds()
     if sleep_seconds > 0:
         time.sleep(sleep_seconds)
-    
-    # Now it's approximately the 1st of the next month
+
     now = datetime.now()
     new_month = now.month
     new_script = determine_script(new_month)
-    
+
     if new_script != current_script:
-        # Kill the previous process
         current_process.terminate()
         current_process.wait()
-        
-        # Delete the database
-        os.system("rm trading_bot.db")
-        
-        # Start the new script
-        current_process = subprocess.Popen(["python3", new_script])
+        os.system("rm -f trading_bot.db")
+        current_process = subprocess.Popen([
+            "bash", "-c",
+            f"source {conda_sh_path} && conda activate base && python3 {new_script}"
+        ])
         current_script = new_script
         print(f"Switched to {new_script} (Month: {new_month})")
     else:
