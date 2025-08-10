@@ -1,14 +1,16 @@
 # Trading-Robot-for-the-Current-Month-Selector
 This is a combination of the Billionaire Trading Robot and the Bull Market Robot and it picks the best robot for the current Earnings Season. 
 
-run the command: 
+Run the following commands in 3 separate command line window terminals. 
+
+python3 stock-list-writer-for-list-of-stock-symbols-to-scan.py
+
+python3 python3 performance-stock-list-writer.py
 
 python3 start-main-program.py
 
-
-
-
-
+( Recommended Operating System: 
+Ubuntu 24.04 LTS Linux )
 
 Important: Don't forget to regularly update your list of stocks to buy and keep an eye on the market conditions. Happy trading!
 
