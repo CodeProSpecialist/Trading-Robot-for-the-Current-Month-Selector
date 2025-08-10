@@ -27,6 +27,16 @@ current_script = determine_script(current_month)
 current_process = subprocess.Popen(["python3", current_script])
 print(f"Started {current_script} (Month: {current_month})")
 
+# Start the two continuous scripts in separate gnome-terminal windows
+stock_list_process = subprocess.Popen(
+    ["gnome-terminal", "--", "python3", "stock-list-writer-for-list-of-stock-symbols-to-scan.py"]
+)
+performance_process = subprocess.Popen(
+    ["gnome-terminal", "--", "python3", "performance-stock-list-writer.py"]
+)
+print("Started stock-list-writer-for-list-of-stock-symbols-to-scan.py in new terminal")
+print("Started performance-stock-list-writer.py in new terminal")
+
 # Main loop to check on the first of each next month
 while True:
     next_first = get_next_month_first()
