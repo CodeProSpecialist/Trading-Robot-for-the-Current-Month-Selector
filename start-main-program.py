@@ -27,13 +27,15 @@ current_script = determine_script(current_month)
 current_process = subprocess.Popen(["python3", current_script])
 print(f"Started {current_script} (Month: {current_month})")
 
-# Start the two continuous scripts in separate gnome-terminal windows
-stock_list_process = subprocess.Popen(
-    ["gnome-terminal", "--", "python3", "stock-list-writer-for-list-of-stock-symbols-to-scan.py"]
-)
-performance_process = subprocess.Popen(
-    ["gnome-terminal", "--", "python3", "performance-stock-list-writer.py"]
-)
+# Start the two continuous scripts in separate x-terminal-emulator windows
+stock_list_process = subprocess.Popen([
+    "x-terminal-emulator", "-e", "bash -c 'python3 stock-list-writer-for-list-of-stock-symbols-to-scan.py; exec bash'"
+])
+
+performance_process = subprocess.Popen([
+    "x-terminal-emulator", "-e", "bash -c 'python3 performance-stock-list-writer.py; exec bash'"
+])
+
 print("Started stock-list-writer-for-list-of-stock-symbols-to-scan.py in new terminal")
 print("Started performance-stock-list-writer.py in new terminal")
 
