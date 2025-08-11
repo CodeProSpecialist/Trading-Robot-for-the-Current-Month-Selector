@@ -474,23 +474,45 @@ def refresh_after_buy():
     bought_stocks = update_bought_stocks_from_api()
 
 def place_trailing_stop_sell_order(symbol, qty, current_price):
+    """
+    Places a trailing stop sell order using Alpaca's API for whole share quantities only.
+    
+    Args:
+        symbol (str): The stock symbol (e.g., 'AAPL').
+        qty (float or int): The number of shares to sell.
+        current_price (float): The current market price of the stock.
+    
+    Returns:
+        str or None: The order ID if successful, None if the order fails or is skipped.
+    """
     try:
+        # Check if qty is a fractional share (not a whole number)
+        if qty != int(qty):
+            print(f"Skipping trailing stop sell order for {symbol}: Fractional share quantity {qty} detected. "
+                  f"Alpaca's trailing stop loss orders are only permitted for whole share quantities.")
+            logging.error(f"Skipped trailing stop sell order for {symbol}: Fractional quantity {qty} not allowed for trailing stop loss orders")
+            return None
+
         stop_loss_percent = 1.0
         stop_loss_price = current_price * (1 - stop_loss_percent / 100)
         print(f"Attempting to place trailing stop sell order for {qty} shares of {symbol} "
-              f"with trail percent {stop_loss_percent}% (initial stop price: {stop_loss_price})")
+              f"with trail percent {stop_loss_percent}% (initial stop price: {stop_loss_price:.2f})")
+
         stop_order = api.submit_order(
             symbol=symbol,
-            qty=qty,  # Use fractional quantity
+            qty=int(qty),  # Ensure qty is an integer for Alpaca API
             side='sell',
             type='trailing_stop',
-            trail_percent=stop_loss_percent,
+            trail_percent=str(stop_loss_percent),  # Alpaca expects string for trail_percent
             time_in_force='gtc'
         )
+
         print(f"Successfully placed trailing stop sell order for {qty} shares of {symbol} "
               f"with ID: {stop_order.id}")
         logging.info(f"Placed trailing stop sell order for {qty} shares of {symbol} with ID: {stop_order.id}")
+
         return stop_order.id
+
     except Exception as e:
         print(f"Error placing trailing stop sell order for {symbol}: {str(e)}")
         logging.error(f"Error placing trailing stop sell order for {symbol}: {str(e)}")
