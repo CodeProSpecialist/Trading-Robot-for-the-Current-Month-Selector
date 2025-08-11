@@ -108,7 +108,7 @@ def stop_if_stock_market_is_closed():
         *********************************************************************************
         ************ Billionaire Buying Strategy Version ********************************
         *********************************************************************************
-            2023 Edition of the Advanced Stock Market Trading Robot, Version 2 
+            2025 Edition of the Advanced Stock Market Trading Robot, Version 8 
                                 https://github.com/CodeProSpecialist
                        Featuring an Accelerated Database Engine with Python 3 SQLAlchemy  
          ''')
@@ -739,7 +739,7 @@ def main():
             print("*****************************************************")
             print("******** Billionaire Buying Strategy Version ********")
             print("*****************************************************")
-            print("2023 Edition of the Advanced Stock Market Trading Robot, Version 2 ")
+            print("2025 Edition of the Advanced Stock Market Trading Robot, Version 8 ")
             print("by https://github.com/CodeProSpecialist")
             print("------------------------------------------------------------------------------------")
             print(f" {current_time_str} Cash Balance: ${cash_balance}")
