@@ -98,7 +98,7 @@ def stop_if_stock_market_is_closed():
             break
         print("\n")
         print('''
-            2024 Edition of the Bull Market Advanced Stock Market Trading Robot, Version 5 
+            2025 Edition of the Bull Market Advanced Stock Market Trading Robot, Version 8 
             
                            https://github.com/CodeProSpecialist
                        Featuring an Accelerated Database Engine with Python 3 SQLAlchemy  
@@ -611,7 +611,7 @@ def main():
             current_time_str = now.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
             cash_balance = round(float(api.get_account().cash), 2)
             print("------------------------------------------------------------------------------------")
-            print("2024 Edition of the Bull Market Advanced Stock Market Trading Robot, Version 5 ")
+            print("2025 Edition of the Bull Market Advanced Stock Market Trading Robot, Version 8 ")
             print("by https://github.com/CodeProSpecialist")
             print("------------------------------------------------------------------------------------")
             print(f"  {current_time_str} Cash Balance: ${cash_balance}")
