@@ -97,10 +97,11 @@ def stop_if_stock_market_is_closed():
 
     while True:
         eastern = pytz.timezone('US/Eastern')
-        now = datetime.now(eastern)
-        current_time_str = now.strftime("%A, %B %d, %Y, %I:%M:%S %p")
-        
-        if now.weekday() <= 4 and market_open_time <= current_time <= market_close_time:
+        current_datetime = datetime.now(eastern)
+        current_time = current_datetime.time()
+        current_time_str = current_datetime.strftime("%A, %B %d, %Y, %I:%M:%S %p")
+
+        if current_datetime.weekday() <= 4 and market_open_time <= current_time <= market_close_time:
             break
 
         print("\n")
@@ -194,7 +195,7 @@ def get_current_price(symbol):
     with yf_lock:
         symbol = symbol.replace('.', '-')
         eastern = pytz.timezone('US/Eastern')
-        now = datetime.now(eastern)
+        current_datetime = datetime.now(eastern)
         pre_market_start = time2(4, 0)
         pre_market_end = time2(9, 30)
         market_start = time2(9, 30)
@@ -204,8 +205,8 @@ def get_current_price(symbol):
         stock_data = yf.Ticker(symbol)
         time.sleep(1.5)
         try:
-            if pre_market_start <= now.time() < market_start:
-                data = stock_data.history(start=now.strftime('%Y-%m-%d'), interval='1m', prepost=True)
+            if pre_market_start <= current_datetime.time() < pre_market_end:
+                data = stock_data.history(start=current_datetime.strftime('%Y-%m-%d'), interval='1m', prepost=True)
                 time.sleep(1.5)
                 if not data.empty:
                     data.index = data.index.tz_convert(eastern)
@@ -224,7 +225,7 @@ def get_current_price(symbol):
                     last_close = float(stock_data.history(period='1d')['Close'].iloc[-1].item())
                     time.sleep(1.5)
                     current_price = last_close
-            elif market_start <= now.time() < market_end:
+            elif market_start <= current_datetime.time() < market_end:
                 data = stock_data.history(period='1d', interval='1m')
                 time.sleep(1.5)
                 if not data.empty:
@@ -243,8 +244,8 @@ def get_current_price(symbol):
                     last_close = float(stock_data.history(period='1d')['Close'].iloc[-1].item())
                     time.sleep(1.5)
                     current_price = last_close
-            elif market_end <= now.time() < post_market_end:
-                data = stock_data.history(start=now.strftime('%Y-%m-%d'), interval='1m', prepost=True)
+            elif market_end <= current_datetime.time() < post_market_end:
+                data = stock_data.history(start=current_datetime.strftime('%Y-%m-%d'), interval='1m', prepost=True)
                 time.sleep(1.5)
                 if not data.empty:
                     data.index = data.index.tz_convert(eastern)
@@ -400,7 +401,8 @@ def end_time_reached():
 def get_last_price_within_past_5_minutes(symbols_to_buy):
     results = {}
     eastern = pytz.timezone('US/Eastern')
-    end_time = datetime.now(eastern)
+    current_datetime = datetime.now(eastern)
+    end_time = current_datetime
     start_time = end_time - timedelta(minutes=5)
 
     for symbol in symbols_to_buy:
@@ -441,8 +443,8 @@ def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
 
         if last_prices is not None and symbol in last_prices:
             current_price = get_current_price(symbol)
-            now = datetime.now(pytz.timezone('US/Eastern'))
-            current_time_str = now.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
+            current_datetime = datetime.now(pytz.timezone('US/Eastern'))
+            current_time_str = current_datetime.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
 
             # Calculate RSI
             historical_data = calculate_technical_indicators(symbol)
@@ -705,8 +707,8 @@ def update_bought_stocks_from_api():
 
 def sell_stocks(bought_stocks, buy_sell_lock):
     stocks_to_remove = []
-    now = datetime.now(pytz.timezone('US/Eastern'))
-    current_time_str = now.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
+    current_datetime = datetime.now(pytz.timezone('US/Eastern'))
+    current_time_str = current_datetime.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
     extracted_date_from_today_date = datetime.today().date()
 
     for symbol, (bought_price, purchase_date) in bought_stocks.items():
@@ -784,8 +786,8 @@ def main():
     while True:
         try:
             stop_if_stock_market_is_closed()
-            now = datetime.now(pytz.timezone('US/Eastern'))
-            current_time_str = now.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
+            current_datetime = datetime.now(pytz.timezone('US/Eastern'))
+            current_time_str = current_datetime.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
 
             cash_balance = round(float(api.get_account().cash), 2)
             print("------------------------------------------------------------------------------------")
