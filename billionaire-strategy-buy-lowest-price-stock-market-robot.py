@@ -98,8 +98,8 @@ def stop_if_stock_market_is_closed():
     while True:
         eastern = pytz.timezone('US/Eastern')
         now = datetime.now(eastern)
-        current_time = now.time()
-
+        current_time_str = now.strftime("%A, %B %d, %Y, %I:%M:%S %p")
+        
         if now.weekday() <= 4 and market_open_time <= current_time <= market_close_time:
             break
 
@@ -112,7 +112,7 @@ def stop_if_stock_market_is_closed():
                                 https://github.com/CodeProSpecialist
                        Featuring an Accelerated Database Engine with Python 3 SQLAlchemy  
          ''')
-        print(f'Current date & time (Eastern Time): {now.strftime("%A, %B %d, %Y, %I:%M:%S %p")}')
+        print(f'Current date & time (Eastern Time): {current_time_str}')
         print("Stockbot only works Monday through Friday: 9:30 am - 4:00 pm Eastern Time.")
         print("Waiting until Stock Market Hours to begin the Stockbot Trading Program.")
         print("\n")
@@ -444,6 +444,10 @@ def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
             now = datetime.now(pytz.timezone('US/Eastern'))
             current_time_str = now.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
 
+            # Calculate RSI
+            historical_data = calculate_technical_indicators(symbol)
+            latest_rsi = historical_data['rsi'].iloc[-1] if not historical_data['rsi'].empty else None
+
             # Check if last price is valid
             last_price = last_prices.get(symbol)
             if last_price is None:
@@ -463,10 +467,60 @@ def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
                 factor_to_subtract = 0.998
                 starting_price_to_compare = round(float(last_price) * factor_to_subtract, 2)
 
-                print(f"{symbol}: Current price = ${current_price:.2f}, Starting price to compare = ${starting_price_to_compare:.2f}")
+                print(f"{symbol}: Current price = ${current_price:.2f}, Starting price to compare = ${starting_price_to_compare:.2f}, RSI = {latest_rsi:.2f}")
                 status_printer_buy_stocks()
 
-                if cash_available >= total_cost_for_qty and current_price <= starting_price_to_compare:
+                # Check RSI condition for immediate buy
+                if latest_rsi is not None and latest_rsi >= 65:
+                    buy_signal = 1
+                    api_symbol = symbol.replace('-', '.')
+                    try:
+                        buy_order = api.submit_order(
+                            symbol=api_symbol,
+                            notional=total_cost_for_qty,  # Use notional for fractional shares
+                            side='buy',
+                            type='market',
+                            time_in_force='day'
+                        )
+                        # Estimate quantity based on notional and current price
+                        qty = round(total_cost_for_qty / current_price, 4)
+                        print(f"{current_time_str}, Bought {qty} shares of {api_symbol} at {current_price} (notional: ${total_cost_for_qty}) due to RSI >= 65")
+                        logging.info(f"{current_time_str} Buy {qty} shares of {api_symbol} due to RSI >= 65.")
+
+                        with open(csv_filename, mode='a', newline='') as csv_file:
+                            csv_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+                            csv_writer.writerow({
+                                'Date': current_time_str,
+                                'Buy': 'Buy',
+                                'Quantity': qty,
+                                'Symbol': api_symbol,
+                                'Price Per Share': current_price
+                            })
+
+                        stocks_to_remove.append((api_symbol, current_price, today_date_str))
+
+                        order_filled = False
+                        for _ in range(30):
+                            order_status = api.get_order(buy_order.id)
+                            if order_status.status == 'filled':
+                                order_filled = True
+                                break
+                            time.sleep(2)
+
+                        if order_filled and api.get_account().daytrade_count < 3:
+                            stop_order_id = place_trailing_stop_sell_order(api_symbol, qty, current_price)
+                            if stop_order_id:
+                                print(f"Trailing stop sell order placed for {api_symbol} with ID: {stop_order_id}")
+                            else:
+                                print(f"Failed to place trailing stop sell order for {api_symbol}")
+                        else:
+                            print(f"Buy order not filled or day trade limit reached for {api_symbol}")
+
+                    except Exception as e:
+                        print(f"Error submitting buy order for {api_symbol}: {e}")
+                        logging.error(f"Error submitting buy order for {api_symbol}: {e}")
+
+                elif cash_available >= total_cost_for_qty and current_price <= starting_price_to_compare:
                     buy_signal = 1
                     api_symbol = symbol.replace('-', '.')
                     try:
