@@ -60,33 +60,14 @@ while True:
 
                 # Calculate percentage changes for different timeframes
                 percentage_change_30_days = calculate_percentage_change(stock_data, "30d")
-                percentage_change_14_days = calculate_percentage_change(stock_data.tail(14), "14d")  # Adjust to 14 days
-                percentage_change_7_days = calculate_percentage_change(stock_data.tail(7), "7d")  # Adjust to 7 days
-                percentage_change_1_day = calculate_percentage_change(stock_data.tail(1), "1d")  # Adjust to 1 day
+                percentage_change_5_days = calculate_percentage_change(stock_data.tail(5), "5d")  # Adjust to 5 days
 
                 # Check if the stock meets the filtering criteria
                 if (
-                        percentage_change_30_days >= 7.0
-                        and percentage_change_14_days >= 5.0
-                        and percentage_change_7_days >= 2.7
-                        and percentage_change_1_day >= 0.05
+                        percentage_change_30_days > 0
+                        and percentage_change_5_days > 0
                 ):
-                    # Download intraday data for last-minute indicators
-                    print(f"Downloading intraday data for {symbol}...")
-                    intraday_data = stock.history(period="1d", interval="1m")
-                    if len(intraday_data) < 50:
-                        continue  # Not enough data for reliable indicators
-
-                    close_prices = np.array(intraday_data['Close'])
-                    rsi = talib.RSI(close_prices, timeperiod=14)
-                    macd, signal, hist = talib.MACD(close_prices, fastperiod=12, slowperiod=26, signalperiod=9)
-
-                    if np.isnan(rsi[-1]) or np.isnan(macd[-1]) or np.isnan(signal[-1]) or np.isnan(hist[-1]):
-                        continue
-
-                    # Check if RSI and MACD are favorable for buying
-                    if rsi[-1] > 50 and macd[-1] > signal[-1] and hist[-1] > 0:
-                        filtered_stocks.append(symbol)
+                    filtered_stocks.append(symbol)
 
                 time.sleep(2)  # Sleep for 2 seconds
 
