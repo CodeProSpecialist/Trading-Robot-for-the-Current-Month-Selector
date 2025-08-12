@@ -2,6 +2,8 @@ import time
 import pytz
 import yfinance as yf
 from datetime import datetime, timedelta
+import talib
+import numpy as np
 
 
 # Function to calculate percentage change for a given timeframe
@@ -69,7 +71,22 @@ while True:
                         and percentage_change_7_days >= 2.7
                         and percentage_change_1_day >= 0.05
                 ):
-                    filtered_stocks.append(symbol)
+                    # Download intraday data for last-minute indicators
+                    print(f"Downloading intraday data for {symbol}...")
+                    intraday_data = stock.history(period="1d", interval="1m")
+                    if len(intraday_data) < 50:
+                        continue  # Not enough data for reliable indicators
+
+                    close_prices = np.array(intraday_data['Close'])
+                    rsi = talib.RSI(close_prices, timeperiod=14)
+                    macd, signal, hist = talib.MACD(close_prices, fastperiod=12, slowperiod=26, signalperiod=9)
+
+                    if np.isnan(rsi[-1]) or np.isnan(macd[-1]) or np.isnan(signal[-1]) or np.isnan(hist[-1]):
+                        continue
+
+                    # Check if RSI and MACD are favorable for buying
+                    if rsi[-1] > 50 and macd[-1] > signal[-1] and hist[-1] > 0:
+                        filtered_stocks.append(symbol)
 
                 time.sleep(2)  # Sleep for 2 seconds
 
