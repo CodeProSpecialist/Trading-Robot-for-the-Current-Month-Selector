@@ -268,7 +268,7 @@ def get_last_price_within_past_5_minutes(symbols):
         logging.error(f"Error fetching last prices: {e}")
         return None
 
-def get_most_recent_purchase_date(api):
+def get_most_recent_purchase_date():
     """
     Retrieve the most recent buy order date for all owned positions using Alpaca API.
     Returns a dictionary mapping symbols to their most recent purchase date (YYYY-MM-DD).
