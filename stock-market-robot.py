@@ -727,9 +727,7 @@ def main():
             print("\n")
             print("------------------------------------------------------------------------------------")
             print("\n")
-            # Get and print the most recent purchase date across all positions
-            most_recent_date = get_most_recent_purchase_date_all_positions()
-            print(f"Most recent purchase date across all owned positions: {most_recent_date}")
+            update_bought_stocks_from_api()
             print("\n")
             stocks_to_buy = get_stocks_to_trade()
             if not bought_stocks:
