@@ -27,10 +27,10 @@ api = tradeapi.REST(APIKEYID, APISECRETKEY, APIBASEURL)
 global stocks_to_buy, today_date, today_datetime, csv_writer, csv_filename, fieldnames, price_changes, end_time
 
 # Configuration flags
-PRINT_STOCKS_TO_BUY = False  # Keep as False for faster execution
-PRINT_ROBOT_STORED_BUY_AND_SELL_LIST_DATABASE = True  # Keep as True to view database
-PRINT_DATABASE = True  # Keep as True to view stocks to sell
-DEBUG = False  # Keep as False for faster execution
+PRINT_STOCKS_TO_BUY = False
+PRINT_ROBOT_STORED_BUY_AND_SELL_LIST_DATABASE = True
+PRINT_DATABASE = True
+DEBUG = False
 
 # Set the timezone to Eastern
 eastern = pytz.timezone('US/Eastern')
@@ -39,7 +39,7 @@ eastern = pytz.timezone('US/Eastern')
 stock_data = {}
 previous_prices = {}
 price_changes = {}
-end_time = 0  # Initialize end_time as a global variable
+end_time = 0
 
 # Define the API datetime format
 api_time_format = '%Y-%m-%dT%H:%M:%S.%f-04:00'
@@ -66,15 +66,15 @@ class TradeHistory(Base):
     __tablename__ = 'trade_history'
     id = Column(Integer, primary_key=True)
     symbol = Column(String)
-    action = Column(String)  # 'buy' or 'sell'
-    quantity = Column(Float)  # Changed to Float for fractional shares
+    action = Column(String)
+    quantity = Column(Float)
     price = Column(Float)
     date = Column(String)
 
 class Position(Base):
     __tablename__ = 'positions'
     symbol = Column(String, primary_key=True)
-    quantity = Column(Float)  # Changed to Float for fractional shares
+    quantity = Column(Float)
     avg_price = Column(Float)
     purchase_date = Column(String)
 
@@ -245,57 +245,31 @@ def calculate_total_symbols(stocks_to_buy):
     return total_symbols
 
 def allocate_cash_equally(cash_available, total_symbols):
-    max_allocation_per_symbol = 600.0  # Maximum dollar amount per stock
+    max_allocation_per_symbol = 600.0
     allocation_per_symbol = min(max_allocation_per_symbol, cash_available / total_symbols) if total_symbols > 0 else 0
     return round(allocation_per_symbol, 2)
 
-def get_previous_price(symbol):
-    if symbol in previous_prices:
-        return previous_prices[symbol]
-    else:
-        current_price = get_current_price(symbol)
-        previous_prices[symbol] = current_price
-        print(f"No previous price for {symbol} was found. Using the current price as the previous price: {current_price}")
-        return current_price
-
-def update_previous_price(symbol, current_price):
-    previous_prices[symbol] = current_price
-
-def track_price_changes(symbol, duration=180):
-    global end_time
-    start_time = time.time()
-    end_time = start_time + duration
-    while time.time() < end_time:
-        try:
-            current_price = get_current_price(symbol)
-            with buy_sell_lock:  # Ensure thread-safe access to shared data
-                previous_price = get_previous_price(symbol)
-                print("")
-                print_technical_indicators(symbol, calculate_technical_indicators(symbol))
-                print("")
-                if symbol not in price_changes:
-                    price_changes[symbol] = {'increased': 0, 'decreased': 0}
-                if current_price > previous_price:
-                    price_changes[symbol]['increased'] += 1
-                    print(f"{symbol} price just increased | current price: {current_price}")
-                elif current_price < previous_price:
-                    price_changes[symbol]['decreased'] += 1
-                    print(f"{symbol} price just decreased | current price: {current_price}")
-                else:
-                    print(f"{symbol} price has not changed | current price: {current_price}")
-                update_previous_price(symbol, current_price)
-        except Exception as e:
-            print(f"Error monitoring {symbol}: {str(e)}")
-            logging.error(f"Error monitoring {symbol}: {str(e)}")
-        time.sleep(10)  # Check price every 10 seconds
-    print(f"Completed 3-minute monitoring for {symbol}.")
-
-def end_time_reached():
-    return time.time() >= end_time
+def get_last_price_within_past_5_minutes(symbols):
+    try:
+        end_time = datetime.now(pytz.UTC).isoformat()
+        start_time = (datetime.now(pytz.UTC) - timedelta(minutes=5)).isoformat()
+        last_prices = {}
+        for symbol in symbols:
+            symbol = symbol.replace('-', '.')
+            bars = api.get_bars(symbol, tradeapi.TimeFrame.Minute, start=start_time, end=end_time, limit=5).df
+            if not bars.empty:
+                last_price = bars['close'].iloc[-1]
+                last_prices[symbol] = round(float(last_price), 4)
+            else:
+                last_prices[symbol] = None
+        return last_prices
+    except Exception as e:
+        print(f"Error fetching last prices: {e}")
+        logging.error(f"Error fetching last prices: {e}")
+        return None
 
 def get_most_recent_purchase_date(symbol):
     try:
-        # Set initial end_time to 30 days prior to ensure historical orders
         end_time = (datetime.now(pytz.UTC) - timedelta(days=30)).isoformat()
         order_list = []
         CHUNK_SIZE = 500
@@ -315,14 +289,12 @@ def get_most_recent_purchase_date(symbol):
             else:
                 break
 
-        # Find all filled buy orders for the symbol
         buy_orders = [
             order for order in order_list
             if order.symbol == symbol and order.side == 'buy' and order.status == 'filled' and order.submitted_at
         ]
 
         if buy_orders:
-            # Sort by submitted_at to get the most recent buy order
             most_recent_buy = max(buy_orders, key=lambda order: order.submitted_at)
             purchase_date = most_recent_buy.submitted_at.date()
             purchase_date_str = purchase_date.strftime("%Y-%m-%d")
@@ -330,7 +302,6 @@ def get_most_recent_purchase_date(symbol):
             logging.info(f"Most recent purchase date for {symbol}: {purchase_date_str} (from {len(buy_orders)} buy orders)")
             return purchase_date_str
         else:
-            # If no buy orders found, use yesterday's date to enable selling
             purchase_date = datetime.today().date() - timedelta(days=1)
             purchase_date_str = purchase_date.strftime("%Y-%m-%d")
             print(f"No filled buy orders found for {symbol}. Using yesterday's date: {purchase_date_str} to enable selling")
@@ -345,112 +316,121 @@ def get_most_recent_purchase_date(symbol):
         logging.error(f"Error fetching buy orders for {symbol}: {e}. Using yesterday's date: {purchase_date_str} to enable selling")
         return purchase_date_str
 
-def buy_stocks(bought_stocks, stocks_to_buy, buy_sell_lock):
-    stocks_to_remove = []
-    global start_time, end_time, original_start_time, price_changes, buy_stock_green_light
-    buy_stock_green_light = 0
-    extracted_date_from_today_date = datetime.today().date()
-    today_date_str = extracted_date_from_today_date.strftime("%Y-%m-%d")
-    now = datetime.now(pytz.timezone('US/Eastern'))
-    current_time_str = now.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
-    start_trading_time = datetime.now(pytz.timezone('US/Eastern')).replace(hour=10, minute=2, second=0, microsecond=0)
-    if datetime.now(pytz.timezone('US/Eastern')) < start_trading_time:
-        print("")
-        print("Exiting buy_stocks: Market trading time not yet reached.")
-        return
-    target_time = datetime.now(pytz.timezone('US/Eastern')).replace(hour=15, minute=56, second=0, microsecond=0)
-    if datetime.now(pytz.timezone('US/Eastern')) > target_time:
-        print("")
-        print("Exiting buy_stocks: Outside of buy strategy times.")
-        print("")
-        return
-    print("")
-    print(f"Starting buy_stocks: Monitoring {len(stocks_to_buy)} symbols simultaneously for 3 minutes each.")
-    print("")
-    start_time = time.time()
-    original_start_time = start_time
-    with buy_sell_lock:
-        price_changes = {symbol: {'increased': 0, 'decreased': 0} for symbol in stocks_to_buy}
+def get_most_recent_purchase_date_all_positions():
     try:
-        # Create and start a thread for each symbol
-        threads = []
-        for symbol in stocks_to_buy:
-            thread = threading.Thread(target=track_price_changes, args=(symbol, 180))
-            threads.append(thread)
-            print(f"Starting monitoring thread for {symbol}...")
-            thread.start()
-            time.sleep(10)  # Stagger threads by 10 seconds
-        # Wait for all threads to complete (3 minutes monitoring per thread)
-        for thread in threads:
-            thread.join()
-        print("")
-        print(f"Completed simultaneous monitoring of all {len(stocks_to_buy)} symbols for 3 minutes each.")
-        print("")
-        # Process buy decisions for all symbols
-        for symbol in stocks_to_buy:
-            cash_available = calculate_cash_on_hand()
-            total_symbols = calculate_total_symbols(stocks_to_buy)
-            allocation_per_symbol = allocate_cash_equally(cash_available, total_symbols)
+        positions = api.list_positions()
+        if not positions:
+            print("No open positions found. Using yesterday's date.")
+            logging.info("No open positions found. Using yesterday's date.")
+            return (datetime.today().date() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        most_recent_date = None
+        most_recent_symbol = None
+
+        for position in positions:
+            symbol = position.symbol
+            purchase_date_str = get_most_recent_purchase_date(symbol)
+            try:
+                purchase_date = datetime.strptime(purchase_date_str, "%Y-%m-%d").date()
+                if most_recent_date is None or purchase_date > most_recent_date:
+                    most_recent_date = purchase_date
+                    most_recent_symbol = symbol
+            except ValueError as e:
+                print(f"Error parsing date for {symbol}: {purchase_date_str}. Skipping. Error: {e}")
+                logging.error(f"Error parsing date for {symbol}: {purchase_date_str}. Error: {e}")
+                continue
+
+        if most_recent_date:
+            purchase_date_str = most_recent_date.strftime("%Y-%m-%d")
+            print(f"Most recent purchase date across all positions: {purchase_date_str} for {most_recent_symbol}")
+            logging.info(f"Most recent purchase date across all positions: {purchase_date_str} for {most_recent_symbol}")
+            return purchase_date_str
+        else:
+            purchase_date = datetime.today().date() - timedelta(days=1)
+            purchase_date_str = purchase_date.strftime("%Y-%m-%d")
+            print(f"No valid purchase dates found. Using yesterday's date: {purchase_date_str}")
+            logging.info(f"No valid purchase dates found. Using yesterday's date: {purchase_date_str}")
+            return purchase_date_str
+
+    except Exception as e:
+        purchase_date = datetime.today().date() - timedelta(days=1)
+        purchase_date_str = purchase_date.strftime("%Y-%m-%d")
+        print(f"Error fetching purchase dates for all positions: {e}. Using yesterday's date: {purchase_date_str}")
+        logging.error(f"Error fetching purchase dates for all positions: {e}. Using yesterday's date: {purchase_date_str}")
+        return purchase_date_str
+
+def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
+    global symbol, current_price, buy_signal
+    if not symbols_to_buy:
+        print("No stocks to buy.")
+        logging.info("No stocks to buy.")
+        return
+    stocks_to_remove = []
+    buy_signal = 0
+
+    cash_available = round(float(api.get_account().cash), 2)
+    total_symbols = len(symbols_to_buy)
+    allocation_per_symbol = allocate_cash_equally(cash_available, total_symbols) if total_symbols > 0 else 0
+
+    for symbol in symbols_to_buy:
+        today_date = datetime.today().date()
+        today_date_str = today_date.strftime("%Y-%m-%d")
+        last_prices = get_last_price_within_past_5_minutes([symbol])
+
+        if last_prices is not None and symbol in last_prices:
             current_price = get_current_price(symbol)
-            qty = round(allocation_per_symbol / current_price, 4) if current_price else 0
-            total_cost_for_qty = allocation_per_symbol
-            print("")
-            status_printer_buy_stocks()
-            print("")
-            print(f"Symbol: {symbol}")
-            print(f"Current Price: {current_price}")
-            print(f"Estimated Quantity: {qty}")
-            print(f"Total Cost for Qty: {total_cost_for_qty}")
-            print("")
-            print(f"Cash Available: {cash_available}")
-            print("")
-            print(f"Increased: {price_changes[symbol]['increased']}")
-            print(f"Decreased: {price_changes[symbol]['decreased']}")
-            print("")
-            total_increases = price_changes[symbol]['increased']
-            total_decreases = price_changes[symbol]['decreased']
-            print("")
-            print(f"Total Price Increases for {symbol}: {total_increases}")
-            print(f"Total Price Decreases for {symbol}: {total_decreases}")
-            print("")
-            overall_total_increases = sum(price_changes[symbol]['increased'] for symbol in stocks_to_buy)
-            overall_total_decreases = sum(price_changes[symbol]['decreased'] for symbol in stocks_to_buy)
-            print("")
-            print(f"Overall Total Price Increases: {overall_total_increases}")
-            print(f"Overall Total Price Decreases: {overall_total_decreases}")
-            print("")
-            historical_data = calculate_technical_indicators(symbol, lookback_days=90)
-            macd_value = historical_data['macd'].iloc[-1]
-            rsi_value = historical_data['rsi'].iloc[-1]
-            volume_value = historical_data['volume'].iloc[-1]
-            print(f"MACD: {macd_value}")
-            print(f"RSI: {rsi_value}")
-            print(f"Volume: {volume_value}")
-            print("")
-            favorable_macd_condition = historical_data['signal'].iloc[-1] > 0.15
-            favorable_rsi_condition = historical_data['rsi'].iloc[-1] > 70
-            favorable_volume_condition = historical_data['volume'].iloc[-1] > 0.85 * historical_data['volume'].mean()
-            if (cash_available >= total_cost_for_qty and
-                    ((price_changes[symbol]['increased'] >= 3 and
-                      price_changes[symbol]['increased'] > price_changes[symbol]['decreased'] and
-                      favorable_macd_condition and
-                      favorable_rsi_condition and
-                      favorable_volume_condition) or
-                     rsi_value >= 65)):
-                if qty > 0:
-                    print(f" ******** Buying stocks for {symbol}... ")
-                    print_technical_indicators(symbol, calculate_technical_indicators(symbol))
+            current_datetime = datetime.now(pytz.timezone('US/Eastern'))
+            current_time_str = current_datetime.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
+
+            historical_data = calculate_technical_indicators(symbol)
+            latest_rsi = historical_data['rsi'].iloc[-1] if not historical_data['rsi'].empty else None
+
+            last_price = last_prices.get(symbol)
+            if last_price is None:
+                try:
+                    symbol_for_yf = symbol.replace('.', '-')
+                    stock_data = yf.Ticker(symbol_for_yf)
+                    last_price = round(float(stock_data.history(period='1d')['Close'].iloc[-1].item()), 4)
+                    print(f"No price found for {symbol} in past 5 minutes. Using last closing price: {last_price}")
+                    logging.info(f"No price found for {symbol} in past 5 minutes. Using last closing price: {last_price}")
+                except Exception as e:
+                    print(f"Error fetching last closing price for {symbol}: {e}")
+                    logging.error(f"Error fetching last closing price for {symbol}: {e}")
+                    continue
+
+            if last_price is not None:
+                total_cost_for_qty = allocation_per_symbol
+                factor_to_subtract = 0.998
+                starting_price_to_compare = round(float(last_price) * factor_to_subtract, 2)
+
+                print(f"{symbol}: Current price = ${current_price:.2f}, Starting price to compare = ${starting_price_to_compare:.2f}, RSI = {latest_rsi:.2f}")
+                status_printer_buy_stocks()
+
+                if total_cost_for_qty < 1.00:
+                    print(f"Order amount for {symbol} is ${total_cost_for_qty:.2f}, which is below the minimum of $1.00. Skipping buy order.")
+                    logging.info(f"{current_time_str} Did not buy {symbol} because order amount ${total_cost_for_qty:.2f} is below minimum of $1.00.")
+                    continue
+
+                if cash_available - total_cost_for_qty < 1.00:
+                    print(f"Insufficient cash to buy {symbol}. Must maintain $1.00 minimum balance. Available: ${cash_available:.2f}, Required: ${total_cost_for_qty:.2f}")
+                    logging.info(f"{current_time_str} Did not buy {symbol} due to insufficient cash to maintain $1.00 minimum balance.")
+                    continue
+
+                if latest_rsi is not None and latest_rsi >= 65:
+                    buy_signal = 1
                     api_symbol = symbol.replace('-', '.')
                     try:
                         buy_order = api.submit_order(
                             symbol=api_symbol,
-                            notional=total_cost_for_qty,  # Use notional for fractional shares
+                            notional=total_cost_for_qty,
                             side='buy',
                             type='market',
                             time_in_force='day'
                         )
-                        print(f" {current_time_str}, Bought {qty:.4f} shares of {api_symbol} at {current_price:.2f} (notional: ${total_cost_for_qty:.2f})")
-                        logging.info(f"{current_time_str} Buy {qty:.4f} shares of {api_symbol}.")
+                        qty = round(total_cost_for_qty / current_price, 4)
+                        print(f"{current_time_str}, Bought {qty:.4f} shares of {api_symbol} at {current_price:.2f} (notional: ${total_cost_for_qty:.2f}) due to RSI >= 65")
+                        logging.info(f"{current_time_str} Buy {qty:.4f} shares of {api_symbol} due to RSI >= 65.")
+
                         with open(csv_filename, mode='a', newline='') as csv_file:
                             csv_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
                             csv_writer.writerow({
@@ -460,8 +440,9 @@ def buy_stocks(bought_stocks, stocks_to_buy, buy_sell_lock):
                                 'Symbol': api_symbol,
                                 'Price Per Share': current_price
                             })
+
                         stocks_to_remove.append((api_symbol, current_price, today_date_str))
-                        buy_stock_green_light = 1
+
                         order_filled = False
                         for _ in range(30):
                             order_status = api.get_order(buy_order.id)
@@ -469,6 +450,7 @@ def buy_stocks(bought_stocks, stocks_to_buy, buy_sell_lock):
                                 order_filled = True
                                 break
                             time.sleep(2)
+
                         if order_filled and api.get_account().daytrade_count < 3:
                             stop_order_id = place_trailing_stop_sell_order(api_symbol, qty, current_price)
                             if stop_order_id:
@@ -477,19 +459,70 @@ def buy_stocks(bought_stocks, stocks_to_buy, buy_sell_lock):
                                 print(f"Failed to place trailing stop sell order for {api_symbol}")
                         else:
                             print(f"Buy order not filled or day trade limit reached for {api_symbol}")
+
                     except Exception as e:
                         print(f"Error submitting buy order for {api_symbol}: {e}")
                         logging.error(f"Error submitting buy order for {api_symbol}: {e}")
+
+                elif cash_available >= total_cost_for_qty and current_price <= starting_price_to_compare:
+                    buy_signal = 1
+                    api_symbol = symbol.replace('-', '.')
+                    try:
+                        buy_order = api.submit_order(
+                            symbol=api_symbol,
+                            notional=total_cost_for_qty,
+                            side='buy',
+                            type='market',
+                            time_in_force='day'
+                        )
+                        qty = round(total_cost_for_qty / current_price, 4)
+                        print(f"{current_time_str}, Bought {qty:.4f} shares of {api_symbol} at {current_price:.2f} (notional: ${total_cost_for_qty:.2f})")
+                        logging.info(f"{current_time_str} Buy {qty:.4f} shares of {api_symbol}.")
+
+                        with open(csv_filename, mode='a', newline='') as csv_file:
+                            csv_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+                            csv_writer.writerow({
+                                'Date': current_time_str,
+                                'Buy': 'Buy',
+                                'Quantity': qty,
+                                'Symbol': api_symbol,
+                                'Price Per Share': current_price
+                            })
+
+                        stocks_to_remove.append((api_symbol, current_price, today_date_str))
+
+                        order_filled = False
+                        for _ in range(30):
+                            order_status = api.get_order(buy_order.id)
+                            if order_status.status == 'filled':
+                                order_filled = True
+                                break
+                            time.sleep(2)
+
+                        if order_filled and api.get_account().daytrade_count < 3:
+                            stop_order_id = place_trailing_stop_sell_order(api_symbol, qty, current_price)
+                            if stop_order_id:
+                                print(f"Trailing stop sell order placed for {api_symbol} with ID: {stop_order_id}")
+                            else:
+                                print(f"Failed to place trailing stop sell order for {api_symbol}")
+                        else:
+                            print(f"Buy order not filled or day trade limit reached for {api_symbol}")
+
+                    except Exception as e:
+                        print(f"Error submitting buy order for {api_symbol}: {e}")
+                        logging.error(f"Error submitting buy order for {api_symbol}: {e}")
+
                 else:
-                    print("Price increases or RSI favorable, but quantity is 0. Not buying.")
-                    buy_stock_green_light = 0
+                    print(f"Last price for {symbol} did not decrease within the past 6 minutes or conditions not met.")
+                    logging.info(f"{current_time_str} Did not buy {symbol} due to insufficient cash or unfavorable price.")
+
+                time.sleep(0.8)
             else:
-                print("Not buying based on technical indicators or price decreases.")
-                print_technical_indicators(symbol, calculate_technical_indicators(symbol))
-            time.sleep(2)
-    except Exception as e:
-        print(f"An error occurred in buy_stocks: {str(e)}")
-        logging.error(f"An error occurred in buy_stocks: {str(e)}")
+                print(f"No valid price data for {symbol}.")
+                logging.info(f"No valid price data for {symbol}.")
+
+            time.sleep(0.5)
+
     try:
         with buy_sell_lock:
             for symbol, price, date in stocks_to_remove:
@@ -513,13 +546,11 @@ def buy_stocks(bought_stocks, stocks_to_buy, buy_sell_lock):
                 session.add(db_position)
             session.commit()
             refresh_after_buy()
+
     except SQLAlchemyError as e:
         session.rollback()
         print(f"Database error: {str(e)}")
         logging.error(f"Database error: {str(e)}")
-    print("")
-    print("Completed buy_stocks processing for all symbols.")
-    print("")
 
 def refresh_after_buy():
     global stocks_to_buy, bought_stocks
@@ -529,7 +560,6 @@ def refresh_after_buy():
 
 def place_trailing_stop_sell_order(symbol, qty, current_price):
     try:
-        # Check if qty is a fractional share
         if qty != int(qty):
             print(f"Skipping trailing stop sell order for {symbol}: Fractional share quantity {qty:.4f} detected.")
             logging.error(f"Skipped trailing stop sell order for {symbol}: Fractional quantity {qty:.4f} not allowed.")
@@ -567,9 +597,8 @@ def update_bought_stocks_from_api():
     for position in positions:
         symbol = position.symbol
         avg_entry_price = float(position.avg_entry_price)
-        quantity = float(position.qty)  # Use float to handle fractional shares
+        quantity = float(position.qty)
 
-        # Get the most recent purchase date for the symbol
         purchase_date_str = get_most_recent_purchase_date(symbol)
 
         try:
@@ -596,12 +625,11 @@ def sell_stocks(bought_stocks, buy_sell_lock):
     now = datetime.now(pytz.timezone('US/Eastern'))
     current_time_str = now.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
     today_date_str = datetime.today().date().strftime("%Y-%m-%d")
-    comparison_date = datetime.today().date()  # Always set to today's date
+    comparison_date = datetime.today().date()
 
     for symbol, (bought_price, purchase_date) in bought_stocks.items():
         status_printer_sell_stocks()
         
-        # Parse purchase_date as a date object
         try:
             bought_date = datetime.strptime(purchase_date, "%Y-%m-%d").date()
         except (ValueError, TypeError) as e:
@@ -609,11 +637,10 @@ def sell_stocks(bought_stocks, buy_sell_lock):
             logging.error(f"Error parsing purchase_date for {symbol}: {purchase_date}. Error: {e}")
             continue
 
-        # Log date comparison details
         print(f"Checking {symbol}: Purchase date = {bought_date}, Comparison date = {comparison_date}")
         logging.info(f"Checking {symbol}: Purchase date = {bought_date}, Comparison date = {comparison_date}")
 
-        if bought_date < comparison_date:  # Strict < to prevent same-day trading
+        if bought_date < comparison_date:
             current_price = get_current_price(symbol)
             if current_price is None:
                 print(f"Skipping {symbol}: Could not retrieve current price.")
@@ -623,9 +650,8 @@ def sell_stocks(bought_stocks, buy_sell_lock):
             try:
                 position = api.get_position(symbol)
                 bought_price = float(position.avg_entry_price)
-                qty = float(position.qty)  # Use float for fractional shares
+                qty = float(position.qty)
 
-                # Fetch all open orders and filter for the specific symbol
                 open_orders = api.list_orders(status='open', symbols=symbol)
                 symbol_open_orders = [order for order in open_orders if order.symbol == symbol]
                 
@@ -637,7 +663,6 @@ def sell_stocks(bought_stocks, buy_sell_lock):
                     logging.info(f"{current_time_str} Skipped sell for {symbol} due to existing open order.")
                     continue
 
-                # Check sell condition: current price is at least 0.5% higher than bought price
                 sell_threshold = bought_price * 1.005
                 print(f"{symbol}: Current price = {current_price:.2f}, Bought price = {bought_price:.2f}, Sell threshold = {sell_threshold:.2f}")
                 logging.info(f"{symbol}: Current price = {current_price:.2f}, Bought price = {bought_price:.2f}, Sell threshold = {sell_threshold:.2f}")
@@ -711,7 +736,7 @@ def load_positions_from_database():
     return bought_stocks
 
 def main():
-    global stocks_to_buy
+    global stocks_to_buy, bought_stocks
     stocks_to_buy = get_stocks_to_trade()
     bought_stocks = load_positions_from_database()
     buy_sell_lock = threading.Lock()
@@ -731,6 +756,10 @@ def main():
             print(f"Current day trade number: {day_trade_count} out of 3 in 5 business days")
             print("\n")
             print("------------------------------------------------------------------------------------")
+            print("\n")
+            # Get and print the most recent purchase date across all positions
+            most_recent_date = get_most_recent_purchase_date_all_positions()
+            print(f"Most recent purchase date across all owned positions: {most_recent_date}")
             print("\n")
             stocks_to_buy = get_stocks_to_trade()
             if not bought_stocks:
