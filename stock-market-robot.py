@@ -708,6 +708,7 @@ def load_positions_from_database():
 def main():
     global stocks_to_buy, bought_stocks
     stocks_to_buy = get_stocks_to_trade()
+    update_bought_stocks_from_api()
     bought_stocks = load_positions_from_database()
     buy_sell_lock = threading.Lock()
     while True:
@@ -727,7 +728,7 @@ def main():
             print("\n")
             print("------------------------------------------------------------------------------------")
             print("\n")
-            update_bought_stocks_from_api()
+            
             print("\n")
             stocks_to_buy = get_stocks_to_trade()
             if not bought_stocks:
