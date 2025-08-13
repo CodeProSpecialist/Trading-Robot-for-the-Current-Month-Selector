@@ -293,6 +293,58 @@ def track_price_changes(symbol, duration=180):
 def end_time_reached():
     return time.time() >= end_time
 
+def get_most_recent_purchase_date(symbol):
+    try:
+        # Set initial end_time to 30 days prior to ensure historical orders
+        end_time = (datetime.now(pytz.UTC) - timedelta(days=30)).isoformat()
+        order_list = []
+        CHUNK_SIZE = 500
+
+        while True:
+            order_chunk = api.list_orders(
+                status='all',
+                nested=False,
+                direction='desc',
+                until=end_time,
+                limit=CHUNK_SIZE,
+                symbols=symbol
+            )
+            if order_chunk:
+                order_list.extend(order_chunk)
+                end_time = (order_chunk[-1].submitted_at - timedelta(seconds=1)).isoformat()
+            else:
+                break
+
+        # Find all filled buy orders for the symbol
+        buy_orders = [
+            order for order in order_list
+            if order.symbol == symbol and order.side == 'buy' and order.status == 'filled' and order.submitted_at
+        ]
+
+        if buy_orders:
+            # Sort by submitted_at to get the most recent buy order
+            most_recent_buy = max(buy_orders, key=lambda order: order.submitted_at)
+            purchase_date = most_recent_buy.submitted_at.date()
+            purchase_date_str = purchase_date.strftime("%Y-%m-%d")
+            print(f"Most recent purchase date for {symbol}: {purchase_date_str} (from {len(buy_orders)} buy orders)")
+            logging.info(f"Most recent purchase date for {symbol}: {purchase_date_str} (from {len(buy_orders)} buy orders)")
+            return purchase_date_str
+        else:
+            # If no buy orders found, use yesterday's date to enable selling
+            purchase_date = datetime.today().date() - timedelta(days=1)
+            purchase_date_str = purchase_date.strftime("%Y-%m-%d")
+            print(f"No filled buy orders found for {symbol}. Using yesterday's date: {purchase_date_str} to enable selling")
+            logging.info(f"No filled buy orders found for {symbol}. Using yesterday's date: {purchase_date_str} to enable selling")
+            logging.warning(f"No buy orders found for {symbol}. Orders fetched: {len(order_list)}. Check Alpaca API data or order history.")
+            return purchase_date_str
+
+    except Exception as e:
+        purchase_date = datetime.today().date() - timedelta(days=1)
+        purchase_date_str = purchase_date.strftime("%Y-%m-%d")
+        print(f"Error fetching buy orders for {symbol}: {e}. Using yesterday's date: {purchase_date_str} to enable selling")
+        logging.error(f"Error fetching buy orders for {symbol}: {e}. Using yesterday's date: {purchase_date_str} to enable selling")
+        return purchase_date_str
+
 def buy_stocks(bought_stocks, stocks_to_buy, buy_sell_lock):
     stocks_to_remove = []
     global start_time, end_time, original_start_time, price_changes, buy_stock_green_light
@@ -517,52 +569,8 @@ def update_bought_stocks_from_api():
         avg_entry_price = float(position.avg_entry_price)
         quantity = float(position.qty)  # Use float to handle fractional shares
 
-        # Fetch the most recent filled buy order date using list_orders
-        try:
-            # Set initial end_time to 30 days prior to ensure historical orders
-            end_time = (datetime.now(pytz.UTC) - timedelta(days=30)).isoformat()
-            order_list = []
-            CHUNK_SIZE = 500
-
-            while True:
-                order_chunk = api.list_orders(
-                    status='all',
-                    nested=False,
-                    direction='desc',
-                    until=end_time,
-                    limit=CHUNK_SIZE
-                )
-                if order_chunk:
-                    order_list.extend(order_chunk)
-                    end_time = (order_chunk[-1].submitted_at - timedelta(seconds=1)).isoformat()
-                else:
-                    break
-
-            # Find the most recent filled buy order for the symbol
-            buy_order = None
-            for order in order_list:
-                if order.symbol == symbol and order.side == 'buy' and order.status == 'filled' and order.submitted_at:
-                    buy_order = order
-                    break
-
-            if buy_order:
-                purchase_date = buy_order.submitted_at.date()
-                purchase_date_str = purchase_date.strftime("%Y-%m-%d")
-                print(f"Fetched purchase date for {symbol}: {purchase_date_str}")
-                logging.info(f"Fetched purchase date for {symbol}: {purchase_date_str}")
-            else:
-                # If position exists but no buy order found, use yesterday's date to enable selling
-                purchase_date = datetime.today().date() - timedelta(days=1)
-                purchase_date_str = purchase_date.strftime("%Y-%m-%d")
-                print(f"No filled buy order found for {symbol}. Using yesterday's date: {purchase_date_str} to enable selling")
-                logging.info(f"No filled buy order found for {symbol}. Using yesterday's date: {purchase_date_str} to enable selling")
-                logging.warning(f"No buy orders found for {symbol}. Orders fetched: {len(order_list)}. Check Alpaca API data or order history.")
-
-        except Exception as e:
-            purchase_date = datetime.today().date() - timedelta(days=1)
-            purchase_date_str = purchase_date.strftime("%Y-%m-%d")
-            print(f"Error fetching buy orders for {symbol}: {e}. Using yesterday's date: {purchase_date_str} to enable selling")
-            logging.error(f"Error fetching buy orders for {symbol}: {e}. Using yesterday's date: {purchase_date_str} to enable selling")
+        # Get the most recent purchase date for the symbol
+        purchase_date_str = get_most_recent_purchase_date(symbol)
 
         try:
             db_position = session.query(Position).filter_by(symbol=symbol).one()
