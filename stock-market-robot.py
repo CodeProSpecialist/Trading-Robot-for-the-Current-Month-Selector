@@ -477,10 +477,10 @@ def refresh_after_buy():
 
 def place_trailing_stop_sell_order(symbol, qty, current_price):
     try:
+        # Check if qty is a fractional share
         if qty != int(qty):
-            print(f"Skipping trailing stop sell order for {symbol}: Fractional share quantity {qty:.4f} detected. "
-                  f"Alpaca's trailing stop loss orders are only permitted for whole share quantities.")
-            logging.error(f"Skipped trailing stop sell order for {symbol}: Fractional quantity {qty:.4f} not allowed for trailing stop loss orders")
+            print(f"Skipping trailing stop sell order for {symbol}: Fractional share quantity {qty:.4f} detected.")
+            logging.error(f"Skipped trailing stop sell order for {symbol}: Fractional quantity {qty:.4f} not allowed.")
             return None
 
         stop_loss_percent = 1.0
@@ -515,12 +515,12 @@ def update_bought_stocks_from_api():
     for position in positions:
         symbol = position.symbol
         avg_entry_price = float(position.avg_entry_price)
-        quantity = float(position.qty)  # Use float for fractional shares
+        quantity = float(position.qty)  # Use float to handle fractional shares
 
         # Fetch the most recent filled buy order date using list_orders
         try:
-            # Set initial end_time to current UTC time
-            end_time = datetime.now(pytz.UTC).isoformat()
+            # Set initial end_time to 30 days prior to ensure historical orders
+            end_time = (datetime.now(pytz.UTC) - timedelta(days=30)).isoformat()
             order_list = []
             CHUNK_SIZE = 500
 
@@ -534,7 +534,7 @@ def update_bought_stocks_from_api():
                 )
                 if order_chunk:
                     order_list.extend(order_chunk)
-                    end_time = order_chunk[-1].submitted_at.isoformat()
+                    end_time = (order_chunk[-1].submitted_at - timedelta(seconds=1)).isoformat()
                 else:
                     break
 
@@ -551,16 +551,18 @@ def update_bought_stocks_from_api():
                 print(f"Fetched purchase date for {symbol}: {purchase_date_str}")
                 logging.info(f"Fetched purchase date for {symbol}: {purchase_date_str}")
             else:
-                purchase_date = datetime.today().date()
+                # If position exists but no buy order found, use yesterday's date to enable selling
+                purchase_date = datetime.today().date() - timedelta(days=1)
                 purchase_date_str = purchase_date.strftime("%Y-%m-%d")
-                print(f"No filled buy order found for {symbol}. Using today's date: {purchase_date_str}")
-                logging.info(f"No filled buy order found for {symbol}. Using today's date: {purchase_date_str}")
+                print(f"No filled buy order found for {symbol}. Using yesterday's date: {purchase_date_str} to enable selling")
+                logging.info(f"No filled buy order found for {symbol}. Using yesterday's date: {purchase_date_str} to enable selling")
+                logging.warning(f"No buy orders found for {symbol}. Orders fetched: {len(order_list)}. Check Alpaca API data or order history.")
 
         except Exception as e:
-            purchase_date = datetime.today().date()
+            purchase_date = datetime.today().date() - timedelta(days=1)
             purchase_date_str = purchase_date.strftime("%Y-%m-%d")
-            print(f"Error fetching buy orders for {symbol}: {e}. Using today's date: {purchase_date_str}")
-            logging.error(f"Error fetching buy orders for {symbol}: {e}. Using today's date: {purchase_date_str}")
+            print(f"Error fetching buy orders for {symbol}: {e}. Using yesterday's date: {purchase_date_str} to enable selling")
+            logging.error(f"Error fetching buy orders for {symbol}: {e}. Using yesterday's date: {purchase_date_str} to enable selling")
 
         try:
             db_position = session.query(Position).filter_by(symbol=symbol).one()
@@ -585,27 +587,64 @@ def sell_stocks(bought_stocks, buy_sell_lock):
     stocks_to_remove = []
     now = datetime.now(pytz.timezone('US/Eastern'))
     current_time_str = now.strftime("Eastern Time | %I:%M:%S %p | %m-%d-%Y |")
-    extracted_date_from_today_date = datetime.today().date()
-    today_date_str = extracted_date_from_today_date.strftime("%Y-%m-%d")
-    
+    today_date_str = datetime.today().date().strftime("%Y-%m-%d")
+    comparison_date = datetime.today().date()  # Always set to today's date
+
     for symbol, (bought_price, purchase_date) in bought_stocks.items():
         status_printer_sell_stocks()
-        bought_date_str = purchase_date
-        if bought_date_str < today_date_str:
+        
+        # Parse purchase_date as a date object
+        try:
+            bought_date = datetime.strptime(purchase_date, "%Y-%m-%d").date()
+        except (ValueError, TypeError) as e:
+            print(f"Error parsing purchase_date for {symbol}: {purchase_date}. Skipping. Error: {e}")
+            logging.error(f"Error parsing purchase_date for {symbol}: {purchase_date}. Error: {e}")
+            continue
+
+        # Log date comparison details
+        print(f"Checking {symbol}: Purchase date = {bought_date}, Comparison date = {comparison_date}")
+        logging.info(f"Checking {symbol}: Purchase date = {bought_date}, Comparison date = {comparison_date}")
+
+        if bought_date < comparison_date:  # Strict < to prevent same-day trading
             current_price = get_current_price(symbol)
+            if current_price is None:
+                print(f"Skipping {symbol}: Could not retrieve current price.")
+                logging.error(f"Skipping {symbol}: Could not retrieve current price.")
+                continue
+
             try:
                 position = api.get_position(symbol)
                 bought_price = float(position.avg_entry_price)
                 qty = float(position.qty)  # Use float for fractional shares
-                open_orders = api.list_orders(status='open', symbol=symbol)
-                if open_orders:
+
+                # Fetch all open orders and filter for the specific symbol
+                open_orders = api.list_orders(status='open', symbols=symbol)
+                symbol_open_orders = [order for order in open_orders if order.symbol == symbol]
+                
+                print(f"{symbol}: Found {len(symbol_open_orders)} open orders.")
+                logging.info(f"{symbol}: Found {len(symbol_open_orders)} open orders.")
+                
+                if symbol_open_orders:
                     print(f"There is an open sell order for {symbol}. Skipping sell order.")
                     logging.info(f"{current_time_str} Skipped sell for {symbol} due to existing open order.")
                     continue
-                if current_price >= bought_price * 1.001:
-                    api.submit_order(symbol=symbol, qty=qty, side='sell', type='market', time_in_force='day')
+
+                # Check sell condition: current price is at least 0.5% higher than bought price
+                sell_threshold = bought_price * 1.005
+                print(f"{symbol}: Current price = {current_price:.2f}, Bought price = {bought_price:.2f}, Sell threshold = {sell_threshold:.2f}")
+                logging.info(f"{symbol}: Current price = {current_price:.2f}, Bought price = {bought_price:.2f}, Sell threshold = {sell_threshold:.2f}")
+
+                if current_price >= sell_threshold:
+                    api.submit_order(
+                        symbol=symbol,
+                        qty=qty,
+                        side='sell',
+                        type='market',
+                        time_in_force='day'
+                    )
                     print(f" {current_time_str}, Sold {qty:.4f} shares of {symbol} at {current_price:.2f} based on a higher selling price.")
                     logging.info(f"{current_time_str} Sold {qty:.4f} shares of {symbol} at {current_price:.2f}.")
+                    
                     with open(csv_filename, mode='a', newline='') as csv_file:
                         csv_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
                         csv_writer.writerow({
@@ -618,15 +657,15 @@ def sell_stocks(bought_stocks, buy_sell_lock):
                     stocks_to_remove.append((symbol, qty, current_price))
                     time.sleep(2)
                 else:
-                    print(f"{symbol}: Price condition not met. Current price ({current_price:.2f}) < Sell threshold ({bought_price * 1.001:.2f})")
-                    logging.info(f"{symbol}: Price condition not met. Current price ({current_price:.2f}) < Sell threshold ({bought_price * 1.001:.2f})")
+                    print(f"{symbol}: Price condition not met. Current price ({current_price:.2f}) < Sell threshold ({sell_threshold:.2f})")
+                    logging.info(f"{symbol}: Price condition not met. Current price ({current_price:.2f}) < Sell threshold ({sell_threshold:.2f})")
                 time.sleep(2)
             except Exception as e:
                 print(f"Error processing sell for {symbol}: {e}")
                 logging.error(f"Error processing sell for {symbol}: {e}")
         else:
-            print(f"{symbol}: Not eligible for sale. Purchase date ({bought_date_str}) is not before today's date ({today_date_str})")
-            logging.info(f"{symbol}: Not eligible for sale. Purchase date ({bought_date_str}) is not before today's date ({today_date_str})")
+            print(f"{symbol}: Not eligible for sale. Purchase date ({bought_date}) is not before comparison date ({comparison_date})")
+            logging.info(f"{symbol}: Not eligible for sale. Purchase date ({bought_date}) is not before comparison date ({comparison_date})")
 
     try:
         with buy_sell_lock:
