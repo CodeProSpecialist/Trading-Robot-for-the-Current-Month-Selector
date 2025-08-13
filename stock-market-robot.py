@@ -251,7 +251,7 @@ def allocate_cash_equally(cash_available, total_symbols):
 
 def get_previous_price(symbol):
     if symbol in previous_prices:
-        return previous prices[symbol]
+        return previous_prices[symbol]
     else:
         current_price = get_current_price(symbol)
         previous_prices[symbol] = current_price
