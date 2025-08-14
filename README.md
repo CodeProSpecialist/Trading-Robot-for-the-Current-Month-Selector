@@ -14,6 +14,8 @@ Install Anaconda Python 3.13.5
 with the default 
 environment called "base."
 
+conda activate
+
 sh install.sh
 
 ( run the following python 3 script )
