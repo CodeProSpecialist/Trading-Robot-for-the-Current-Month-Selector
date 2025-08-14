@@ -10,6 +10,9 @@ cd ~/Trading-Robot-for-the-Current-Month-Selector
 
 On the first run, install python dependencies: 
 
+Install Anaconda with the default 
+environment called "base."
+
 sh install.sh
 
 ( run the following python 3 script )
