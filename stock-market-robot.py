@@ -249,24 +249,29 @@ def allocate_cash_equally(cash_available, total_symbols):
     allocation_per_symbol = min(max_allocation_per_symbol, cash_available / total_symbols) if total_symbols > 0 else 0
     return round(allocation_per_symbol, 2)
 
-def get_last_price_within_past_5_minutes(symbols):
-    try:
-        end_time = datetime.now(pytz.UTC).isoformat()
-        start_time = (datetime.now(pytz.UTC) - timedelta(minutes=5)).isoformat()
-        last_prices = {}
-        for symbol in symbols:
-            symbol = symbol.replace('-', '.')
-            bars = api.get_bars(symbol, tradeapi.TimeFrame.Minute, start=start_time, end=end_time, limit=5).df
-            if not bars.empty:
-                last_price = bars['close'].iloc[-1]
-                last_prices[symbol] = round(float(last_price), 4)
+def get_last_price_within_past_5_minutes(symbols_to_buy):
+    results = {}
+    eastern = pytz.timezone('US/Eastern')
+    current_datetime = datetime.now(eastern)
+    end_time = current_datetime
+    start_time = end_time - timedelta(minutes=5)
+
+    for symbol in symbols_to_buy:
+        try:
+            symbol = symbol.replace('.', '-')
+            data = yf.download(symbol, start=start_time, end=end_time, interval='1m', prepost=True, auto_adjust=False)
+            time.sleep(1)
+            if not data.empty:
+                last_price = round(float(data['Close'].iloc[-1].item()), 2)
+                results[symbol] = last_price
             else:
-                last_prices[symbol] = None
-        return last_prices
-    except Exception as e:
-        print(f"Error fetching last prices: {e}")
-        logging.error(f"Error fetching last prices: {e}")
-        return None
+                results[symbol] = None
+        except Exception as e:
+            print(f"Error occurred while fetching data for {symbol}: {e}")
+            logging.error(f"Error occurred while fetching data for {symbol}: {e}")
+            results[symbol] = None
+
+    return results
 
 def get_most_recent_purchase_date(symbol):
     """
