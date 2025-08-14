@@ -333,6 +333,46 @@ def calculate_technical_indicators(symbol, lookback_days=90):
     historical_data['volume'] = historical_data['Volume']
     return historical_data
 
+def calculate_rsi(symbol, period=14, interval='5m'):
+    """
+    Calculate the RSI for a given symbol using intraday data.
+    
+    Args:
+        symbol (str): Stock symbol (e.g., 'AAPL').
+        period (int): Number of periods for RSI calculation (default: 14).
+        interval (str): Data interval, e.g., '5m' for 5-minute data (default: '5m').
+    
+    Returns:
+        float: Latest RSI value, or None if calculation fails.
+    """
+    try:
+        symbol = symbol.replace('.', '-')  # Adjust for yfinance compatibility
+        stock_data = yf.Ticker(symbol)
+        # Fetch intraday data for the current day, including pre/post-market
+        historical_data = stock_data.history(period='1d', interval=interval, prepost=True)
+        time.sleep(1.5)  # Respect yfinance rate limits
+        
+        if historical_data.empty or len(historical_data['Close']) < period:
+            logging.error(f"Insufficient data for RSI calculation for {symbol} with {interval} interval.")
+            print(f"Insufficient data for RSI calculation for {symbol}.")
+            return None
+        
+        # Calculate RSI using talib
+        rsi = talib.RSI(historical_data['Close'], timeperiod=period)
+        latest_rsi = rsi.iloc[-1] if not rsi.empty else None
+        
+        if latest_rsi is None or not np.isfinite(latest_rsi):
+            logging.error(f"Invalid RSI value for {symbol}: {latest_rsi}")
+            print(f"Invalid RSI value for {symbol}.")
+            return None
+        
+        return round(latest_rsi, 2)
+    
+    except Exception as e:
+        logging.error(f"Error calculating RSI for {symbol}: {e}")
+        print(f"Error calculating RSI for {symbol}: {e}")
+        return None
+
 def print_technical_indicators(symbol, historical_data):
     print("")
     print(f"\nTechnical Indicators for {symbol}:\n")
