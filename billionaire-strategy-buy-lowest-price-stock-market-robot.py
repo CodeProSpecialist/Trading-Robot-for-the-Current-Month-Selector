@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, date
 from datetime import time as time2
 import alpaca_trade_api as tradeapi
 import pytz
+import numpy as np
 import talib
 import yfinance as yf
 import sqlalchemy
