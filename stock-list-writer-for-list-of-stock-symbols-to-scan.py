@@ -392,11 +392,21 @@ def main():
                 logging.error(f"Error fetching sector for {score['symbol']}: {e}")
                 score['sector'] = 'Unknown'
 
+    # Define sectors to exclude
+    excluded_sectors = [
+        'Energy', 'Oil & Gas', 'Natural Gas', 'Utilities', 'Electricity',
+        'Basic Materials', 'Financial Services', 'Financials', 'Banks', 'Insurance',
+        'Consumer Staples', 'Healthcare', 'Medical Devices', 'Biotechnology',
+        'Pharmaceuticals'
+    ]
+
     # Sort and select top stocks with sector limit
     df_scores = pd.DataFrame(stock_scores)
     if not df_scores.empty:
         # Group by sector, take top 5 per sector, then select top 30 overall
         top_stocks = df_scores.groupby('sector').apply(lambda x: x.nlargest(5, 'score')).reset_index(drop=True)
+        # Filter out excluded sectors
+        top_stocks = top_stocks[~top_stocks['sector'].isin(excluded_sectors)]
         top_stocks = top_stocks.nlargest(CONFIG['chart_top_n'], 'score').to_dict('records')
     else:
         top_stocks = []
