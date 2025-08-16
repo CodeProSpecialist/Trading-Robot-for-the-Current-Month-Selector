@@ -28,6 +28,7 @@ api = tradeapi.REST(APIKEYID, APISECRETKEY, APIBASEURL)
 
 global stocks_to_buy, today_date, today_datetime, csv_writer, csv_filename, fieldnames, price_changes, end_time
 global current_price, today_date_str, qty
+global price_history, last_stored, interval_map
 
 # Configuration flags
 PRINT_STOCKS_TO_BUY = False  # Set to False for faster execution
@@ -43,6 +44,18 @@ stock_data = {}
 previous_prices = {}
 price_changes = {}
 end_time = 0  # Initialize end_time as a global variable
+
+price_history = {}  # symbol -> interval -> list of prices
+last_stored = {}    # symbol -> interval -> last_timestamp
+interval_map = {
+    '1min': 60,
+    '5min': 300,
+    '10min': 600,
+    '15min': 900,
+    '30min': 1800,
+    '45min': 2700,
+    '60min': 3600
+}  # intervals in seconds
 
 # Define the API datetime format
 api_time_format = '%Y-%m-%dT%H:%M:%S.%f-04:00'
