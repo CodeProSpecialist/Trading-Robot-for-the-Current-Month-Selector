@@ -536,7 +536,7 @@ def get_most_recent_purchase_date(symbol):
         return purchase_date_str
 
 def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
-    global symbol, current_price, buy_signal
+    global symbol, current_price, buy_signal, price_history, last_stored
     if not symbols_to_buy:
         print("No stocks to buy.")
         logging.info("No stocks to buy.")
@@ -583,6 +583,18 @@ def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
             logging.info(f"No valid price data for {symbol}.")
             continue
 
+        # Update price history for the symbol at specified intervals
+        current_timestamp = time.time()
+        if symbol not in price_history:
+            price_history[symbol] = {interval: [] for interval in interval_map}
+            last_stored[symbol] = {interval: 0 for interval in interval_map}
+        for interval, delta in interval_map.items():
+            if current_timestamp - last_stored[symbol][interval] >= delta:
+                price_history[symbol][interval].append(current_price)
+                last_stored[symbol][interval] = current_timestamp
+                print(f"Stored price {current_price} for {symbol} at {interval} interval.")
+                logging.info(f"Stored price {current_price} for {symbol} at {interval} interval.")
+
         # Get historical data for volume, RSI, and candlesticks (use intraday for better pattern detection)
         symbol_yf = symbol.replace('.', '-')
         stock_data = yf.Ticker(symbol_yf)
@@ -602,6 +614,7 @@ def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
         close_prices = historical_data['Close'].values
         rsi_series = talib.RSI(close_prices, timeperiod=14)
         rsi_decrease = False
+        latest_rsi = rsi_series[-1] if len(rsi_series) > 0 else None
         if len(rsi_series) >= 10:
             recent_rsi_values = rsi_series[-5:][~np.isnan(rsi_series[-5:])]
             prior_rsi_values = rsi_series[-10:-5][~np.isnan(rsi_series[-10:-5])]
@@ -615,6 +628,15 @@ def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
         else:
             recent_avg_rsi = 0
             prior_avg_rsi = 0
+
+        # Calculate MACD
+        short_window = 12
+        long_window = 26
+        signal_window = 9
+        macd, macd_signal, _ = talib.MACD(close_prices, fastperiod=short_window, slowperiod=long_window, signalperiod=signal_window)
+        latest_macd = macd[-1] if len(macd) > 0 else None
+        latest_macd_signal = macd_signal[-1] if len(macd_signal) > 0 else None
+        macd_above_signal = latest_macd > latest_macd_signal if latest_macd is not None else False
 
         # Check price increase (for logging, not used in buy condition)
         previous_price = get_previous_price(symbol)
@@ -636,6 +658,14 @@ def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
         # Calculate price drop: At least 0.2% decline from last price
         price_decline_threshold = last_price * (1 - 0.002)  # 0.2% decline
         price_decline = current_price <= price_decline_threshold
+
+        # Calculate short-term price trend using price_history (e.g., 5min interval)
+        short_term_trend = None
+        if symbol in price_history and '5min' in price_history[symbol] and len(price_history[symbol]['5min']) >= 2:
+            recent_prices = price_history[symbol]['5min'][-2:]
+            short_term_trend = 'up' if recent_prices[-1] > recent_prices[-2] else 'down'
+            print(f"{symbol}: Short-term price trend (5min): {short_term_trend}")
+            logging.info(f"{symbol}: Short-term price trend (5min): {short_term_trend}")
 
         # Detect any of the 8 bullish reversal candlestick patterns using TA-Lib over last 20 candles
         open_prices = historical_data['Open'].values
@@ -672,10 +702,16 @@ def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
                 logging.error(f"IndexError in candlestick pattern detection for {symbol}: {e}")
                 continue
 
-        # Log detected patterns, volume decrease, RSI decrease, and price decline
+        # Log detected patterns, volume decrease, RSI decrease, price decline, and price history
         if detected_patterns:
             print(f"{symbol}: Detected bullish reversal patterns at candle {reversal_candle_index}: {', '.join(detected_patterns)}")
             logging.info(f"{symbol}: Detected bullish reversal patterns at candle {reversal_candle_index}: {', '.join(detected_patterns)}")
+            # Log price history for detected patterns
+            if symbol in price_history:
+                for interval, prices in price_history[symbol].items():
+                    if prices:
+                        print(f"{symbol}: Price history at {interval}: {prices[-5:]}")
+                        logging.info(f"{symbol}: Price history at {interval}: {prices[-5:]}")
         if price_decline:
             print(f"{symbol}: Price decline >= 0.2% detected (Current price = {current_price:.2f} <= Threshold = {price_decline_threshold:.2f})")
             logging.info(f"{symbol}: Price decline >= 0.2% detected (Current price = {current_price:.2f} <= Threshold = {price_decline_threshold:.2f})")
@@ -717,11 +753,64 @@ def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
             logging.info(f"{current_time_str} Did not buy {symbol} due to insufficient cash")
             continue
 
-        # Updated buy condition: bullish reversal detected, volume decrease, RSI decrease, price decline >= 0.2%
-        if (bullish_reversal_detected and volume_decrease and rsi_decrease and price_decline):
+        # Pattern-specific buy conditions
+        buy_conditions_met = False
+        specific_reason = ""
+        if bullish_reversal_detected:
+            # Check short-term price stability using price_history (5min interval)
+            price_stable = True
+            if symbol in price_history and '5min' in price_history[symbol] and len(price_history[symbol]['5min']) >= 2:
+                recent_prices = price_history[symbol]['5min'][-2:]
+                price_stable = abs(recent_prices[-1] - recent_prices[-2]) / recent_prices[-2] < 0.005  # Less than 0.5% change
+                print(f"{symbol}: Price stability check (5min): {price_stable}")
+                logging.info(f"{symbol}: Price stability check (5min): {price_stable}")
+
+            for pattern in detected_patterns:
+                if pattern == 'Hammer':
+                    if latest_rsi < 35 and not volume_decrease and price_decline >= (last_price * 0.003) and macd_above_signal and price_stable:
+                        buy_conditions_met = True
+                        specific_reason = f"{pattern} with RSI <35, volume increase, price decline >=0.3%, MACD crossover, stable price"
+                        break
+                elif pattern == 'Bullish Engulfing':
+                    if recent_avg_volume > 1.5 * prior_avg_volume and macd_above_signal and rsi_decrease and price_stable:
+                        buy_conditions_met = True
+                        specific_reason = f"{pattern} with volume >1.5x prior, MACD above signal, RSI decrease, stable price"
+                        break
+                elif pattern == 'Morning Star':
+                    if not volume_decrease and not rsi_decrease and price_decline >= (last_price * 0.002) and latest_rsi < 40 and price_stable:
+                        buy_conditions_met = True
+                        specific_reason = f"{pattern} with volume stable/increase, RSI stable/increase, price decline >=0.2%, RSI <40, stable price"
+                        break
+                elif pattern == 'Piercing Line':
+                    if recent_avg_rsi < 40 and not volume_decrease and price_decline >= (last_price * 0.002) and price_stable:
+                        buy_conditions_met = True
+                        specific_reason = f"{pattern} with avg RSI <40, volume stable/increase, price decline >=0.2%, stable price"
+                        break
+                elif pattern == 'Three White Soldiers':
+                    if not volume_decrease and macd_above_signal and price_stable:
+                        buy_conditions_met = True
+                        specific_reason = f"{pattern} with volume increase, MACD above signal, stable price"
+                        break
+                elif pattern == 'Dragonfly Doji':
+                    if latest_rsi < 30 and not volume_decrease and price_decline > 0 and price_stable:
+                        buy_conditions_met = True
+                        specific_reason = f"{pattern} with RSI <30, volume stable/increase, price decline, stable price"
+                        break
+                elif pattern == 'Inverted Hammer':
+                    if rsi_decrease and not volume_decrease and macd_above_signal and price_stable:
+                        buy_conditions_met = True
+                        specific_reason = f"{pattern} with RSI decrease, volume stable/increase, MACD above signal, stable price"
+                        break
+                elif pattern == 'Tweezer Bottom':
+                    if latest_rsi < 40 and rsi_decrease and not volume_decrease and price_stable:
+                        buy_conditions_met = True
+                        specific_reason = f"{pattern} with RSI <40, RSI decrease, volume stable/increase, stable price"
+                        break
+
+        if buy_conditions_met:
             buy_signal = 1
             api_symbol = symbol.replace('-', '.')
-            reason = f"bullish reversal ({', '.join(detected_patterns)}), volume decrease, RSI decrease, price decline >= 0.2%"
+            reason = f"bullish reversal ({', '.join(detected_patterns)}), {specific_reason}"
             try:
                 buy_order = api.submit_order(
                     symbol=api_symbol,
@@ -777,8 +866,8 @@ def buy_stocks(bought_stocks, symbols_to_buy, buy_sell_lock):
                 continue
 
         else:
-            print(f"{symbol}: Conditions not met. Bullish Reversal = {bullish_reversal_detected}, Volume Decrease = {volume_decrease}, RSI Decrease = {rsi_decrease}, Price Decline >= 0.2% = {price_decline}")
-            logging.info(f"{current_time_str} Did not buy {symbol} due to Bullish Reversal = {bullish_reversal_detected}, Volume Decrease = {volume_decrease}, RSI Decrease = {rsi_decrease}, Price Decline >= 0.2% = {price_decline}")
+            print(f"{symbol}: Conditions not met for any detected patterns. Bullish Reversal = {bullish_reversal_detected}, Volume Decrease = {volume_decrease}, RSI Decrease = {rsi_decrease}, Price Decline >= 0.2% = {price_decline}, Price Stable = {price_stable}")
+            logging.info(f"{current_time_str} Did not buy {symbol} due to Bullish Reversal = {bullish_reversal_detected}, Volume Decrease = {volume_decrease}, RSI Decrease = {rsi_decrease}, Price Decline >= 0.2% = {price_decline}, Price Stable = {price_stable}")
 
         # Update previous price
         update_previous_price(symbol, current_price)
