@@ -36,7 +36,7 @@ CONFIG = {
     'output_file': 'list-of-stock-symbols-to-scan.txt',
     'counter_file': 's-and-p-500-list-printer-run-counter.txt',
     'log_file': 'stock_scanner.log',
-    'chart_top_n': 30,  # Number of top stocks to output
+    'chart_top_n': 100,  # Number of top stocks to output
 }
 
 # Set up logging
@@ -403,8 +403,8 @@ def main():
     # Sort and select top stocks with sector limit
     df_scores = pd.DataFrame(stock_scores)
     if not df_scores.empty:
-        # Group by sector, take top 5 per sector, then select top 30 overall
-        top_stocks = df_scores.groupby('sector').apply(lambda x: x.nlargest(5, 'score')).reset_index(drop=True)
+        # Group by sector, take top 25 per sector, then select top 100 overall
+        top_stocks = df_scores.groupby('sector').apply(lambda x: x.nlargest(25, 'score')).reset_index(drop=True)
         # Filter out excluded sectors
         top_stocks = top_stocks[~top_stocks['sector'].isin(excluded_sectors)]
         top_stocks = top_stocks.nlargest(CONFIG['chart_top_n'], 'score').to_dict('records')
