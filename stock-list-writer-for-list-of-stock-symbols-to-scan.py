@@ -397,7 +397,7 @@ def main():
         'Energy', 'Oil & Gas', 'Natural Gas', 'Utilities', 'Electricity',
         'Basic Materials', 'Financial Services', 'Financials', 'Banks', 'Insurance',
         'Consumer Cyclical', 'Healthcare', 'Medical Devices', 'Biotechnology',
-        'Pharmaceuticals', 'Real Estate'
+        'Pharmaceuticals', 'Real Estate', 'Consumer Defensive', 'Communication Services' 
     ]
 
     # Sort and select top stocks with sector limit
