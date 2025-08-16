@@ -396,8 +396,8 @@ def main():
     excluded_sectors = [
         'Energy', 'Oil & Gas', 'Natural Gas', 'Utilities', 'Electricity',
         'Basic Materials', 'Financial Services', 'Financials', 'Banks', 'Insurance',
-        'Consumer Staples', 'Healthcare', 'Medical Devices', 'Biotechnology',
-        'Pharmaceuticals'
+        'Consumer Cyclical', 'Healthcare', 'Medical Devices', 'Biotechnology',
+        'Pharmaceuticals', 'Real Estate'
     ]
 
     # Sort and select top stocks with sector limit
