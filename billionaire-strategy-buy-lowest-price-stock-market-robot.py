@@ -36,7 +36,7 @@ PRINT_STOCKS_TO_BUY = False  # Set to False for faster execution
 PRINT_ROBOT_STORED_BUY_AND_SELL_LIST_DATABASE = True  # Set to True to view database
 PRINT_DATABASE = True  # Set to True to view stocks to sell
 DEBUG = False  # Set to False for faster execution
-ALL_BUY_ORDERS_ARE_1_DOLLAR = True  # When True, every buy order is a $1.00 fractional share market day order
+ALL_BUY_ORDERS_ARE_1_DOLLAR = False  # When True, every buy order is a $1.00 fractional share market day order
 
 # Set the timezone to Eastern
 eastern = pytz.timezone('US/Eastern')
