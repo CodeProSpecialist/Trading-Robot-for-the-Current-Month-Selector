@@ -1,8 +1,7 @@
 # Trading-Robot-for-the-Current-Month-Selector
 This is a combination of the Billionaire Trading Robot and the Bull Market Robot and it picks the best robot for the current Earnings Season. 
 
-***** Upgrade to the newest version of this Python Robot today because some Python code updates were finished and some errors were recently fixed on 
-8-17-2025. *****
+***** Upgrade to the newest version of this Python Robot today because some Python code updates were finished and some errors were recently fixed on August 17, 2025. *****
 
 Run the following command in a command line window terminal:  
 
