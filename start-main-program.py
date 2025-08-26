@@ -62,11 +62,11 @@ stock_list_process = subprocess.Popen([
 
 performance_process = subprocess.Popen([
     "x-terminal-emulator", "-e",
-    f"bash -c 'source {conda_sh_path} && conda activate base && cd {project_dir} && python3 performance-stock-list-writer.py; exec bash'"
+    f"bash -c 'source {conda_sh_path} && conda activate base && cd {project_dir} && python3 auto-copy-stock-list-writer.py; exec bash'"
 ])
 
 print("Started stock-list-writer-for-list-of-stock-symbols-to-scan.py in new terminal")
-print("Started performance-stock-list-writer.py in new terminal")
+print("Started auto-copy-stock-list-writer.py in new terminal")
 
 # Step 5: Monthly check loop
 while True:
