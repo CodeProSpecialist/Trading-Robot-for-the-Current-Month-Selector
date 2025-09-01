@@ -15,7 +15,9 @@ environment called "base."
 
 conda activate
 
-sh install.sh
+bash install.sh
+
+bash install_dependencies.sh
 
 ( run the following python 3 script )
 
