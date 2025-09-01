@@ -15,6 +15,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
+import pandas_market_calendars as mcal
 
 # Load environment variables for Alpaca API
 APIKEYID = os.getenv('APCA_API_KEY_ID')
@@ -87,14 +88,26 @@ session = Session()
 Base.metadata.create_all(engine)
 
 def stop_if_stock_market_is_closed():
-    market_open_time = time2(9, 27)
-    market_close_time = time2(16, 0)
+    # Initialize NYSE calendar
+    nyse = mcal.get_calendar('NYSE')
+    # Get current time in Eastern Time
+    now = datetime.now(eastern)
+    # Get schedule for today
+    schedule = nyse.schedule(start_date=now.date(), end_date=now.date())
+    
     while True:
-        eastern = pytz.timezone('US/Eastern')
         now = datetime.now(eastern)
-        current_time = now.time()
-        if now.weekday() <= 4 and market_open_time <= current_time <= market_close_time:
-            break
+        # Check if today is a trading day
+        if not schedule.empty:
+            market_open = schedule.iloc[0]['market_open'].astimezone(eastern)
+            market_close = schedule.iloc[0]['market_close'].astimezone(eastern)
+            # Adjust to start checking slightly early
+            early_open = market_open - timedelta(minutes=3)  # Start at 9:27 AM
+            if now >= early_open and now <= market_close:
+                print(f"Market is open. Current time: {now.strftime('%A, %B %d, %Y, %I:%M:%S %p')}")
+                logging.info(f"Market is open. Starting trading at {now.strftime('%Y-%m-%d %H:%M:%S')}")
+                break
+        # If market is closed, print status and wait
         print("\n")
         print('''
             2025 Edition of the Bull Market Advanced Stock Market Trading Robot, Version 8 
@@ -103,10 +116,11 @@ def stop_if_stock_market_is_closed():
                        Featuring an Accelerated Database Engine with Python 3 SQLAlchemy  
          ''')
         print(f'Current date & time (Eastern Time): {now.strftime("%A, %B %d, %Y, %I:%M:%S %p")}')
-        print("Stockbot only works Monday through Friday: 9:30 am - 4:00 pm Eastern Time.")
+        print("Stockbot only works during NYSE market hours: typically 9:30 am - 4:00 pm Eastern Time, excluding holidays.")
         print("Stockbot begins watching stock prices early at 9:27 am Eastern Time.")
         print("Waiting until Stock Market Hours to begin the Stockbot Trading Program.")
         print("\n")
+        logging.info(f"Market is closed. Current time: {now.strftime('%Y-%m-%d %H:%M:%S')}. Waiting for market to open.")
         time.sleep(60)
 
 def print_database_tables():
